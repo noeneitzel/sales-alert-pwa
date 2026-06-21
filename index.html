@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+<title>Sales Alert</title>
+<link rel="manifest" href="./manifest.webmanifest" />
+<meta name="theme-color" content="#0b0f16" />
+<!-- iOS PWA -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Sales" />
+<link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+<style>
+  :root {
+    --bg: #0b0f16;
+    --card: #141a24;
+    --line: #222c3a;
+    --text: #f4f7fb;
+    --muted: #8a97a8;
+    --green: #22c55e;
+    --green-soft: rgba(34, 197, 94, 0.14);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+  }
+  .wrap {
+    height: 100dvh;
+    display: flex; flex-direction: column;
+    padding: env(safe-area-inset-top) 18px calc(env(safe-area-inset-bottom) + 14px);
+  }
+
+  /* ---- Arm / start screen ---- */
+  #arm {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 22px; text-align: center; padding: 28px;
+    background: radial-gradient(120% 80% at 50% 0%, #11202a 0%, var(--bg) 60%);
+  }
+  #arm .coin { font-size: 72px; }
+  #arm h1 { font-size: 30px; margin: 0; letter-spacing: -0.5px; }
+  #arm p { color: var(--muted); margin: 0; max-width: 320px; line-height: 1.5; font-size: 15px; }
+  .startBtn {
+    margin-top: 8px;
+    background: var(--green); color: #04210f; border: none;
+    font-size: 19px; font-weight: 700; padding: 17px 40px; border-radius: 16px;
+    box-shadow: 0 8px 30px rgba(34,197,94,0.35); cursor: pointer;
+  }
+  .startBtn:active { transform: scale(0.97); }
+
+  /* ---- Header ---- */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 2px 14px;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 17px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #f59e0b; box-shadow: 0 0 0 4px rgba(245,158,11,.15); transition: .3s; }
+  .dot.live { background: var(--green); box-shadow: 0 0 0 4px var(--green-soft); }
+  .dot.off  { background: #ef4444; box-shadow: 0 0 0 4px rgba(239,68,68,.15); }
+  .status { font-size: 12px; color: var(--muted); }
+
+  /* ---- Stats ---- */
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; }
+  .stat .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .stat .val { font-size: 30px; font-weight: 800; margin-top: 6px; letter-spacing: -1px; }
+  .stat .val.green { color: var(--green); }
+
+  /* ---- Feed ---- */
+  .feedHead { font-size: 13px; color: var(--muted); margin: 2px 4px 10px; text-transform: uppercase; letter-spacing: .5px; }
+  #feed { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 9px; -webkit-overflow-scrolling: touch; }
+  .row {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 13px 15px; display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    animation: slideIn .35s ease;
+  }
+  @keyframes slideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+  .row .who { font-weight: 600; font-size: 15px; }
+  .row .meta { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+  .row .amt { font-weight: 800; font-size: 18px; color: var(--green); white-space: nowrap; }
+  .empty { color: var(--muted); text-align: center; margin-top: 40px; font-size: 15px; line-height: 1.6; }
+
+  /* ---- Celebration overlay ---- */
+  #cheer {
+    position: fixed; inset: 0; z-index: 40; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center;
+    background: radial-gradient(120% 90% at 50% 40%, rgba(34,197,94,0.96) 0%, rgba(21,128,61,0.98) 100%);
+    color: #04210f;
+  }
+  #cheer.show { display: flex; animation: pop .4s cubic-bezier(.2,1.3,.4,1); }
+  @keyframes pop { from { transform: scale(.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  #cheer .big { font-size: 88px; line-height: 1; }
+  #cheer .amount { font-size: 64px; font-weight: 900; letter-spacing: -2px; }
+  #cheer .sub { font-size: 22px; font-weight: 700; opacity: .85; }
+  #cheer .tiny { font-size: 15px; opacity: .7; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div id="arm">
+  <div class="coin">💰</div>
+  <h1>Sales Alert</h1>
+  <p>Tippe auf Start, damit der Sound freigeschaltet wird. Lass die App während des Drops geöffnet — bei jedem Verkauf gibt's Cha-Ching.</p>
+  <button class="startBtn" id="startBtn">▶︎ Monitor starten</button>
+  <p id="armNote" style="font-size:13px;"></p>
+</div>
+
+<div class="wrap">
+  <header>
+    <div class="brand"><span class="dot" id="dot"></span> Sales Alert</div>
+    <div class="status" id="status">verbinde…</div>
+  </header>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="label">Sales heute</div>
+      <div class="val" id="countVal">0</div>
+    </div>
+    <div class="stat">
+      <div class="label">Umsatz heute</div>
+      <div class="val green" id="revVal">€0</div>
+    </div>
+  </div>
+
+  <div class="feedHead">Letzte Verkäufe</div>
+  <div id="feed">
+    <div class="empty" id="emptyMsg">Warte auf den ersten Sale… 🎟️<br />Halte die App offen.</div>
+  </div>
+</div>
+
+<div id="cheer">
+  <div class="big">🤑</div>
+  <div class="amount" id="cheerAmt">€0</div>
+  <div class="sub" id="cheerWho">Neuer Sale!</div>
+  <div class="tiny" id="cheerMeta"></div>
+</div>
+
+<audio id="chime" src="./shopify-sales.mp3" preload="auto"></audio>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+const SUPABASE_URL = 'https://zasqbufoayjasqzebrau.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphc3FidWZvYXlqYXNxemVicmF1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE5NzEyOTMsImV4cCI6MjA5NzU0NzI5M30.elgpJr8vmXHdTaQO6j56NTBSxB8HVNVFzzY_fXf3kjs';
+
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  realtime: { params: { eventsPerSecond: 20 } },
+});
+
+const $ = (id) => document.getElementById(id);
+const chime = $('chime');
+let count = 0, revenue = 0, wakeLock = null;
+const seen = new Set();
+
+function fmtMoney(amount, currency) {
+  const n = Number(amount);
+  const cur = (currency || 'EUR').toUpperCase();
+  const sym = { EUR: '€', USD: '$', GBP: '£', CHF: 'CHF ' }[cur] || (cur + ' ');
+  if (!isFinite(n)) return sym + '—';
+  return sym + n.toLocaleString('de-DE', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+}
+
+function isToday(ts) {
+  const d = new Date(ts), n = new Date();
+  return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+}
+
+function setStatus(state, text) {
+  const dot = $('dot');
+  dot.className = 'dot' + (state === 'live' ? ' live' : state === 'off' ? ' off' : '');
+  $('status').textContent = text;
+}
+
+function renderStats() {
+  $('countVal').textContent = count;
+  $('revVal').textContent = fmtMoney(revenue, 'EUR');
+}
+
+function playChime() {
+  try {
+    const node = chime.cloneNode(true);
+    node.volume = 1;
+    node.play().catch(() => {});
+  } catch (_) {}
+}
+
+function vibrate() {
+  if (navigator.vibrate) navigator.vibrate([0, 90, 60, 140]);
+}
+
+function notify(sale) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    new Notification('💰 Neuer Sale!', {
+      body: `${fmtMoney(sale.amount, sale.currency)}${sale.customer ? ' · ' + sale.customer : ''}`,
+      icon: './icon-192.png',
+      tag: 'sale-' + (sale.id ?? Date.now()),
+      silent: false,
+    });
+  } catch (_) {}
+}
+
+function addRow(sale, prepend = true) {
+  const empty = $('emptyMsg');
+  if (empty) empty.remove();
+  const row = document.createElement('div');
+  row.className = 'row';
+  const time = new Date(sale.created_at || Date.now()).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const bits = [];
+  if (sale.quantity) bits.push(sale.quantity + '× Ticket' + (sale.quantity > 1 ? 's' : ''));
+  if (sale.description) bits.push(sale.description);
+  bits.push(time);
+  row.innerHTML = `<div><div class="who">${escapeHtml(sale.customer || 'Anonym')}</div>
+      <div class="meta">${escapeHtml(bits.join(' · '))}</div></div>
+      <div class="amt">${fmtMoney(sale.amount, sale.currency)}</div>`;
+  const feed = $('feed');
+  if (prepend) feed.prepend(row); else feed.append(row);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+let cheerTimer = null;
+function celebrate(sale) {
+  $('cheerAmt').textContent = fmtMoney(sale.amount, sale.currency);
+  $('cheerWho').textContent = sale.customer || 'Neuer Sale!';
+  const meta = [];
+  if (sale.quantity) meta.push(sale.quantity + ' Ticket' + (sale.quantity > 1 ? 's' : ''));
+  if (sale.description) meta.push(sale.description);
+  $('cheerMeta').textContent = meta.join(' · ');
+  const c = $('cheer');
+  c.classList.remove('show'); void c.offsetWidth; c.classList.add('show');
+  clearTimeout(cheerTimer);
+  cheerTimer = setTimeout(() => c.classList.remove('show'), 3500);
+}
+
+function onSale(sale) {
+  const key = sale.id ?? (sale.created_at + '|' + sale.amount);
+  if (seen.has(key)) return;
+  seen.add(key);
+  count += 1;
+  revenue += Number(sale.amount) || 0;
+  renderStats();
+  addRow(sale, true);
+  playChime();
+  vibrate();
+  celebrate(sale);
+  notify(sale);
+}
+
+async function loadToday() {
+  const { data, error } = await sb
+    .from('sales').select('*').order('id', { ascending: false }).limit(100);
+  if (error) { console.warn(error); return; }
+  const today = (data || []).filter((s) => isToday(s.created_at)).reverse();
+  for (const s of today) {
+    const key = s.id ?? (s.created_at + '|' + s.amount);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    count += 1;
+    revenue += Number(s.amount) || 0;
+    addRow(s, true);
+  }
+  renderStats();
+}
+
+function subscribe() {
+  sb.channel('sales-feed')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sales' }, (payload) => onSale(payload.new))
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') setStatus('live', '🟢 live — wartet auf Sales');
+      else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setStatus('off', '⚠︎ getrennt — versuche erneut…');
+      else setStatus('', 'verbinde…');
+    });
+}
+
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+  } catch (_) {}
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') requestWakeLock();
+});
+
+async function start() {
+  // 1) Unlock audio inside the user gesture (iOS requirement).
+  try { chime.muted = true; await chime.play(); chime.pause(); chime.currentTime = 0; chime.muted = false; } catch (_) {}
+  // 2) Notifications (best effort).
+  let note = '';
+  if ('Notification' in window) {
+    try { const p = await Notification.requestPermission(); if (p !== 'granted') note = 'Hinweis: Benachrichtigungen aus — Sound + Vollbild funktionieren trotzdem.'; } catch (_) {}
+  }
+  // 3) Service worker (PWA install) + keep the screen awake during the drop.
+  if ('serviceWorker' in navigator) { try { await navigator.serviceWorker.register('./sw.js'); } catch (_) {} }
+  requestWakeLock();
+  // 4) Hide arm screen, load data, go live.
+  $('arm').style.display = 'none';
+  await loadToday();
+  subscribe();
+}
+
+$('startBtn').addEventListener('click', start, { once: true });
+
+// Reconnect realtime if the socket drops while app is backgrounded.
+window.addEventListener('online', () => { setStatus('', 'verbinde…'); });
+</script>
+</body>
+</html>
