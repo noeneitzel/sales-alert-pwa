@@ -148,6 +148,9 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 
 const SUPABASE_URL = 'https://zasqbufoayjasqzebrau.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inphc3FidWZvYXlqYXNxemVicmF1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE5NzEyOTMsImV4cCI6MjA5NzU0NzI5M30.elgpJr8vmXHdTaQO6j56NTBSxB8HVNVFzzY_fXf3kjs';
+const VAPID_PUBLIC = 'BBcTmI9w0WdgcywQ2LptbdjhatNzKYwwl-f5t7MG96XhirhJHS9KS4vZddECe7UxsE45WlLL10cFQBGxBBUzdG8';
+const PUSH_SUBSCRIBE_URL = SUPABASE_URL + '/functions/v1/push-subscribe';
+let pushArmed = false;
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   realtime: { params: { eventsPerSecond: 20 } },
@@ -275,10 +278,43 @@ function subscribe() {
   sb.channel('sales-feed')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sales' }, (payload) => onSale(payload.new))
     .subscribe((status) => {
-      if (status === 'SUBSCRIBED') setStatus('live', '🟢 live — wartet auf Sales');
+      if (status === 'SUBSCRIBED') setStatus('live', '🟢 live' + (pushArmed ? ' · 🔔 Push an' : ' · 🔕 nur offen'));
       else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setStatus('off', '⚠︎ getrennt — versuche erneut…');
       else setStatus('', 'verbinde…');
     });
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+async function subscribePush(reg) {
+  try {
+    if (!('PushManager' in window)) return false;
+    if (Notification.permission !== 'granted') return false;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
+      });
+    }
+    const res = await fetch(PUSH_SUBSCRIBE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription: sub.toJSON(), userAgent: navigator.userAgent }),
+    });
+    pushArmed = res.ok;
+    return res.ok;
+  } catch (e) {
+    console.warn('push subscribe failed', e);
+    return false;
+  }
 }
 
 async function requestWakeLock() {
@@ -298,8 +334,14 @@ async function start() {
   if ('Notification' in window) {
     try { const p = await Notification.requestPermission(); if (p !== 'granted') note = 'Hinweis: Benachrichtigungen aus — Sound + Vollbild funktionieren trotzdem.'; } catch (_) {}
   }
-  // 3) Service worker (PWA install) + keep the screen awake during the drop.
-  if ('serviceWorker' in navigator) { try { await navigator.serviceWorker.register('./sw.js'); } catch (_) {} }
+  // 3) Service worker + Web Push (notifications when the app is closed) + wake lock.
+  if ('serviceWorker' in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.register('./sw.js');
+      await navigator.serviceWorker.ready;
+      await subscribePush(reg);
+    } catch (_) {}
+  }
   requestWakeLock();
   // 4) Hide arm screen, load data, go live.
   $('arm').style.display = 'none';
